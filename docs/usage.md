@@ -81,36 +81,42 @@ jobs:
 
 To accept a gitleaks finding that is not a secret, add a `.gitleaks.toml` allowlist or a `.gitleaksignore` entry. To accept a zizmor finding, add an inline `# zizmor: ignore[<audit>]` comment with a reason.
 
-## container-build
+## container-check and container-build
 
-Builds on native `ubuntu-24.04` (amd64) and `ubuntu-24.04-arm` (arm64) runners, without emulation.
+Both build on native `ubuntu-24.04` (amd64) and `ubuntu-24.04-arm` (arm64) runners, without emulation.
 
-- With `push: true`, each architecture is pushed by digest, combined into one multi-arch index tagged with the commit SHA and branch, and build provenance is attested for the index digest and verified before the job ends. Deploy by the `digest` output, not by tag.
-- With `push: false`, both architectures are built and nothing is pushed. Use this on pull requests.
+- **container-check** builds both architectures and pushes nothing. Use it on pull requests. **Caller permissions:** `contents: read`.
+- **container-build** pushes each architecture by digest, combines them into one multi-arch index tagged with the commit SHA and branch, then attests build provenance for the index digest and verifies it before the job ends. Use it on the default branch, and deploy by the `digest` output, not by tag. **Caller permissions:** `contents: read`, `packages: write`, `id-token: write`, `attestations: write`.
 
-**Caller permissions:** `contents: read` when `push` is false. With `push: true`, also `packages: write`, `id-token: write` and `attestations: write`.
+They are separate workflows because GitHub validates the permissions of every job in a called workflow, including jobs that would be skipped. A single workflow with a push switch would force pull requests to grant package and signing permissions they never use.
+
+### container-check
+
+| Input | Type | Default | Description |
+|---|---|---|---|
+| `context` | string | `.` | Build context directory. |
+| `dockerfile` | string | empty | Path to the Dockerfile. Defaults to Dockerfile in the context. |
+
+### container-build
 
 | Input | Type | Default | Description |
 |---|---|---|---|
 | `image` | string | required | Image name without tag, for example ghcr.io/leat-consulting/demo-app. Must be lower case. |
 | `context` | string | `.` | Build context directory. |
 | `dockerfile` | string | empty | Path to the Dockerfile. Defaults to Dockerfile in the context. |
-| `push` | boolean | `false` | Push, attest and verify the image. Leave false for pull request builds. |
 
 | Output | Description |
 |---|---|
 | `image` | Image name, without tag or digest. |
-| `digest` | The sha256 digest of the multi-arch index. Empty when push is false. |
+| `digest` | The sha256 digest of the multi-arch index. |
 
 ```yaml
 jobs:
   image-check:
     if: github.event_name == 'pull_request'
-    uses: leat-consulting/platform-workflows/.github/workflows/container-build.yml@<commit-sha> # v1.0.0
+    uses: leat-consulting/platform-workflows/.github/workflows/container-check.yml@<commit-sha> # v1.0.0
     permissions:
       contents: read
-    with:
-      image: ghcr.io/leat-consulting/demo-app
 
   image:
     if: github.event_name == 'push'
@@ -122,7 +128,6 @@ jobs:
       attestations: write # store the provenance attestation
     with:
       image: ghcr.io/leat-consulting/demo-app
-      push: true
 ```
 
 Anyone can check an image the same way the workflow does:

@@ -88,18 +88,15 @@ jobs:
           exit "$failed"
 
   container-check:
-    name: container-build (pull request)
-    if: github.event_name == 'pull_request'
-    uses: ./.github/workflows/container-build.yml
+    name: container-check
+    uses: ./.github/workflows/container-check.yml
     permissions:
       contents: read
     with:
-      image: ghcr.io/leat-consulting/pw-fixture
       context: fixtures/container-app
-      push: false
 
   container-publish:
-    name: container-build (main)
+    name: container-build
     if: github.event_name == 'push'
     uses: ./.github/workflows/container-build.yml
     permissions:
@@ -110,7 +107,6 @@ jobs:
     with:
       image: ghcr.io/leat-consulting/pw-fixture
       context: fixtures/container-app
-      push: true
 
   static-site:
     name: node-ci (static site)
@@ -130,6 +126,9 @@ jobs:
       contents: read
       id-token: write # OIDC token for Sigstore signing
       attestations: write # store the provenance attestation
+      # GitHub validates the permissions of every called job, including the
+      # deploy job that deploy: false skips. This repository has no Pages site.
+      pages: write # required by validation only; nothing is deployed
     with:
       artifact-name: static-site
       deploy: false

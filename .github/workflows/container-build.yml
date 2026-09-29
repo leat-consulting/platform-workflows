@@ -1,14 +1,13 @@
 name: container-build
 
-# Build a container image for linux/amd64 and linux/arm64 on native runners.
-# With push enabled: push each architecture by digest, create one multi-arch
-# index, attest build provenance for the index digest, verify the attestation,
-# and output the digest. Tags are for humans; deploy by digest.
-# Without push: build both architectures and push nothing.
+# Build a container image for linux/amd64 and linux/arm64 on native runners,
+# push each architecture by digest, create one multi-arch index, attest build
+# provenance for the index digest, verify the attestation, and output the
+# digest. Tags are for humans; deploy by digest.
+# For pull requests, use container-check, which builds without pushing.
 #
-# Caller permissions required:
-#   push: false  contents: read
-#   push: true   contents: read, packages: write, id-token: write, attestations: write
+# Caller permissions required: contents: read, packages: write,
+# id-token: write, attestations: write.
 
 on:
   workflow_call:
@@ -25,58 +24,19 @@ on:
         description: Path to the Dockerfile. Defaults to Dockerfile in the context.
         type: string
         default: ""
-      push:
-        description: Push, attest and verify the image. Leave false for pull request builds.
-        type: boolean
-        default: false
     outputs:
       image:
         description: Image name, without tag or digest.
         value: ${{ jobs.publish.outputs.image }}
       digest:
-        description: The sha256 digest of the multi-arch index. Empty when push is false.
+        description: The sha256 digest of the multi-arch index.
         value: ${{ jobs.publish.outputs.digest }}
 
 permissions: {}
 
 jobs:
-  check:
-    name: check (${{ matrix.platform }})
-    if: ${{ !inputs.push }}
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux/amd64
-            runner: ubuntu-24.04
-          - platform: linux/arm64
-            runner: ubuntu-24.04-arm
-    steps:
-      - name: Check out
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-
-      - name: Build without pushing
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: ${{ inputs.context }}
-          file: ${{ inputs.dockerfile }}
-          platforms: ${{ matrix.platform }}
-          push: false
-          provenance: false
-          sbom: false
-
   build:
     name: build (${{ matrix.platform }})
-    if: ${{ inputs.push }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     permissions:
@@ -144,7 +104,6 @@ jobs:
 
   publish:
     name: publish
-    if: ${{ inputs.push }}
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 15

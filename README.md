@@ -10,6 +10,7 @@ This repository is built in the open. Every change arrives through a reviewed pu
 |---|---|
 | [`node-ci.yml`](.github/workflows/node-ci.yml) | Installs from the lockfile with lifecycle scripts off, then runs lint, test and build |
 | [`security-scan.yml`](.github/workflows/security-scan.yml) | Secret scanning, dependency review, vulnerability and misconfiguration scanning, workflow linting and a workflow security audit |
+| [`container-check.yml`](.github/workflows/container-check.yml) | Native amd64 and arm64 builds that push nothing, for pull requests |
 | [`container-build.yml`](.github/workflows/container-build.yml) | Native amd64 and arm64 builds, one multi-arch image, build provenance attested and verified, digest as output |
 | [`pages-deploy.yml`](.github/workflows/pages-deploy.yml) | Packages a static site, attests and verifies it, then deploys exactly that package to GitHub Pages |
 
