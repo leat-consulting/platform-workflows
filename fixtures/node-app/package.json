@@ -1,0 +1,12 @@
+{
+  "name": "pw-fixture-node-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Minimal Node project used by the platform-workflows self-test.",
+  "type": "module",
+  "scripts": {
+    "lint": "node --check src/sum.js",
+    "test": "node --test",
+    "build": "mkdir -p dist && cp src/sum.js dist/"
+  }
+}
