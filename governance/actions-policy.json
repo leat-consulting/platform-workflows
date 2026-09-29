@@ -9,7 +9,11 @@
     "github_owned_allowed": true,
     "verified_allowed": false,
     "patterns_allowed": [
-      "leat-consulting/*"
+      "leat-consulting/*",
+      "docker/build-push-action@*",
+      "docker/login-action@*",
+      "docker/metadata-action@*",
+      "docker/setup-buildx-action@*"
     ]
   }
 }
