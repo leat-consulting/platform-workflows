@@ -7,7 +7,7 @@ Organisation settings live in org-settings.json and actions-policy.json.
 
 Usage:
   governance.py check   report every difference from the definitions; exit 1 if any
-  governance.py apply   create or update rulesets so they match the definitions
+  governance.py apply   update the Actions policy and rulesets so they match the definitions
 
 Requires `gh` authenticated (GH_TOKEN) with organisation administration read
 for check, and repository administration write for apply.
@@ -174,9 +174,25 @@ def bypass_report(org):
     return lines
 
 
+def apply_actions_policy(org):
+    policy = load("actions-policy.json")
+    changed = 0
+    if subset_diff(policy["permissions"], api(f"orgs/{org}/actions/permissions")):
+        api(f"orgs/{org}/actions/permissions", "PUT", policy["permissions"])
+        print("org: updated Actions permissions")
+        changed += 1
+    if subset_diff(policy["selected_actions"], api(f"orgs/{org}/actions/permissions/selected-actions")):
+        api(f"orgs/{org}/actions/permissions/selected-actions", "PUT", policy["selected_actions"])
+        print("org: updated allowed actions")
+        changed += 1
+    if not changed:
+        print("org: Actions policy unchanged")
+    return changed
+
+
 def apply(org):
     assignments = load("rulesets/assignments.json")
-    changed = 0
+    changed = apply_actions_policy(org)
     for name, repos in assignments.items():
         for repo in repos:
             want = desired_ruleset(name, repo)
