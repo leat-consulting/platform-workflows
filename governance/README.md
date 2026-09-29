@@ -49,6 +49,19 @@ Both scripts need `gh` and a token in `GH_TOKEN` with organisation administratio
 
 Settings the API does not change: the REST API accepts but ignores `members_can_delete_repositories`, `members_can_change_repo_visibility` and `members_can_invite_outside_collaborators`. They are listed under `ui_only` in `org-settings.json`. `check.sh` still reports them, but they must be set by hand under Settings, Member privileges.
 
+## Admin tokens for settings changes
+
+No admin credential is kept on the workstation between settings changes. When one is needed:
+
+1. In GitHub, go to Settings, Developer settings, Personal access tokens, Fine-grained tokens, and generate a new token.
+2. Resource owner: `leat-consulting`. Expiration: 7 days or less.
+3. Repository access: all repositories. Repository permissions: Administration read and write (Metadata read is added automatically).
+4. Organisation permissions: Administration read and write.
+5. Save it to a file readable only by you, run the change, then run `check.sh` to confirm there is no drift.
+6. Delete the token in GitHub and remove the file.
+
+For `check.sh` alone, read-only Administration permissions are enough.
+
 ## Evidence
 
 ### The rules bind the organisation owner's admin token
