@@ -1,5 +1,11 @@
-# platform-workflows
+# fixtures/bad
 
-Reusable GitHub Actions workflows from Leat Consulting: CI, security scanning, attested container builds, verified static site deploys and AI-assisted review.
+This branch holds deliberate problems for the `security-scan` self-test in `platform-workflows`. It is never merged. Each file below must be detected, or the self-test fails:
 
-This repository is being built in the open. Every change arrives through a reviewed pull request, and the rules that enforce this are defined in `governance/`.
+| File | Planted problem | Scanner |
+|---|---|---|
+| `config/example.env` | A high-entropy value assigned to an API key variable. It is random and grants access to nothing. | gitleaks |
+| `vulnerable/package-lock.json` | `lodash` 4.17.20, affected by CVE-2021-23337 (high) | dependency review, trivy |
+| `.github/workflows/unsafe.yml` | Template injection from an issue title, an unpinned action and an invalid runner label | zizmor, actionlint |
+
+The workflow file cannot run. It triggers only on issue events, which run workflows from the default branch alone. The organisation also blocks unpinned actions.

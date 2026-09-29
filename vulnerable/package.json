@@ -1,0 +1,9 @@
+{
+  "name": "pw-fixture-vulnerable",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Scanner fixture pinned to a known-vulnerable dependency.",
+  "dependencies": {
+    "lodash": "4.17.20"
+  }
+}

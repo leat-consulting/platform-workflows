@@ -1,0 +1,13 @@
+# Deliberately unsafe workflow used as a scanner fixture. It never runs:
+# issue events only run workflows from the default branch.
+name: unsafe-fixture
+on:
+  issues:
+    types: [opened]
+jobs:
+  greet:
+    runs-on: ubuntu-lates
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          echo "New issue: ${{ github.event.issue.title }}"
