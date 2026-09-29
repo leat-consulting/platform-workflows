@@ -15,7 +15,7 @@ The organisation is on GitHub Free. Organisation-level rulesets need GitHub Team
 | `rulesets/default-branch.json` | Protection for `main` on every repository |
 | `rulesets/release-tags.json` | Protection for `v*` tags where releases are published |
 | `rulesets/assignments.json` | Which rulesets apply to which repositories |
-| `rulesets/required-checks/<repo>.json` | Status checks required on a repository's `main`, merged into `default-branch` at apply time |
+| `rulesets/required-checks/<repo>.json` | Status checks required on a repository's `main`, merged into `default-branch` at apply time. Each check is tied to the GitHub Actions app (`integration_id` 15368), so no other app can satisfy it by posting a check with the same name. |
 | `governance.py` | Implements `apply` (Actions policy and rulesets) and `check` (everything) |
 | `apply.sh`, `check.sh` | Entry points |
 

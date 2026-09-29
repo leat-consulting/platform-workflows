@@ -1,0 +1,41 @@
+{
+  "strict": true,
+  "required_status_checks": [
+    {
+      "context": "workflow policy",
+      "integration_id": 15368
+    },
+    {
+      "context": "node-ci / build",
+      "integration_id": 15368
+    },
+    {
+      "context": "node-ci (static site) / build",
+      "integration_id": 15368
+    },
+    {
+      "context": "security-scan / scan",
+      "integration_id": 15368
+    },
+    {
+      "context": "security-scan (negative) / scan",
+      "integration_id": 15368
+    },
+    {
+      "context": "security-scan (negative assert)",
+      "integration_id": 15368
+    },
+    {
+      "context": "container-check / check (linux/amd64)",
+      "integration_id": 15368
+    },
+    {
+      "context": "container-check / check (linux/arm64)",
+      "integration_id": 15368
+    },
+    {
+      "context": "pages-deploy (package only) / package",
+      "integration_id": 15368
+    }
+  ]
+}
