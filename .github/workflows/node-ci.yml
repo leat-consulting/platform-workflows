@@ -1,0 +1,90 @@
+name: node-ci
+
+# Install from the lockfile, then run the caller's lint, test and build
+# scripts in that order. Optionally upload the build output as an artifact.
+# Caller permissions required: contents: read.
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: Node.js version to install.
+        type: string
+        default: "24"
+      working-directory:
+        description: Directory containing package.json and package-lock.json.
+        type: string
+        default: "."
+      ignore-scripts:
+        description: Skip dependency lifecycle scripts during install. Turn off only if a dependency genuinely needs them.
+        type: boolean
+        default: true
+      artifact-path:
+        description: Path, relative to working-directory, to upload after the build. Leave empty to upload nothing.
+        type: string
+        default: ""
+      artifact-name:
+        description: Name of the uploaded artifact.
+        type: string
+        default: build
+    outputs:
+      artifact-name:
+        description: Name of the uploaded artifact, or empty if nothing was uploaded.
+        value: ${{ jobs.build.outputs.artifact-name }}
+
+permissions: {}
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      artifact-name: ${{ steps.upload.outcome == 'success' && inputs.artifact-name || '' }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ inputs.node-version }}
+          # No dependency cache: a cache written by one run can be read by a
+          # later release build, which is a cache-poisoning route.
+          package-manager-cache: false
+
+      - name: Install dependencies from the lockfile
+        env:
+          IGNORE_SCRIPTS: ${{ inputs.ignore-scripts }}
+        run: |
+          if [ "$IGNORE_SCRIPTS" = "true" ]; then
+            npm ci --ignore-scripts --no-audit --no-fund
+          else
+            npm ci --no-audit --no-fund
+          fi
+
+      - name: Lint
+        run: npm run --if-present lint
+
+      - name: Test
+        run: npm run --if-present test
+
+      - name: Build
+        run: npm run --if-present build
+
+      - name: Upload build output
+        id: upload
+        if: inputs.artifact-path != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ inputs.working-directory }}/${{ inputs.artifact-path }}
+          if-no-files-found: error
+          retention-days: 7
