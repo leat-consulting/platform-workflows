@@ -16,8 +16,7 @@
       "members_can_create_teams": false,
       "members_can_delete_issues": false,
       "members_can_delete_repositories": false,
-      "members_can_change_repo_visibility": false,
-      "members_can_invite_outside_collaborators": false
+      "members_can_change_repo_visibility": false
     },
     "orgs/{org}/actions/permissions/workflow": {
       "default_workflow_permissions": "read",
@@ -31,8 +30,7 @@
     "orgs/{org}": [
       "two_factor_requirement_enabled",
       "members_can_delete_repositories",
-      "members_can_change_repo_visibility",
-      "members_can_invite_outside_collaborators"
+      "members_can_change_repo_visibility"
     ]
   },
   "code_security": {
@@ -47,6 +45,14 @@
       "secret_scanning": "enabled",
       "secret_scanning_push_protection": "enabled",
       "private_vulnerability_reporting": "enabled"
+    }
+  },
+  "plan_limited": {
+    "orgs/{org}": {
+      "members_can_invite_outside_collaborators": {
+        "wanted": false,
+        "reason": "Restricting outside collaborator invites to owners requires GitHub Enterprise Cloud. Mitigation: the organisation has one member, the owner; the Claude Apps are not members."
+      }
     }
   }
 }

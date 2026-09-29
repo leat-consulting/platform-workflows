@@ -155,6 +155,16 @@ def check_repos(org):
     return diffs
 
 
+def plan_limited_report(org):
+    lines = []
+    for endpoint, fields in load("org-settings.json").get("plan_limited", {}).items():
+        live = api(endpoint.replace("{org}", org))
+        for key, spec in fields.items():
+            if live.get(key) != spec["wanted"]:
+                lines.append(f"{endpoint}.{key} is {live.get(key)!r}; not enforceable on this plan. {spec['reason']}")
+    return lines
+
+
 def bypass_report(org):
     lines = []
     for repo in sorted(set(sum(load("rulesets/assignments.json").values(), []))):
@@ -194,7 +204,7 @@ def main():
         diffs = check_org(org) + check_repos(org)
         for line in diffs:
             print(f"DRIFT {line}")
-        for line in bypass_report(org):
+        for line in plan_limited_report(org) + bypass_report(org):
             print(f"INFO  {line}")
         print("no drift" if not diffs else f"{len(diffs)} difference(s)")
         return 1 if diffs else 0

@@ -47,7 +47,9 @@ Both scripts need `gh` and a token in `GH_TOKEN` with organisation administratio
 ./apply.sh   # creates or updates rulesets to match; a second run makes no changes
 ```
 
-Settings the API does not change: the REST API accepts but ignores `members_can_delete_repositories`, `members_can_change_repo_visibility` and `members_can_invite_outside_collaborators`. They are listed under `ui_only` in `org-settings.json`. `check.sh` still reports them, but they must be set by hand under Settings, Member privileges.
+Settings the API does not change: the REST API accepts but ignores `members_can_delete_repositories` and `members_can_change_repo_visibility`. They are listed under `ui_only` in `org-settings.json`. `check.sh` still reports them, but they must be set by hand under Settings, Member privileges.
+
+Settings the plan does not allow: only GitHub Enterprise Cloud can restrict outside collaborator invites to owners. This is listed under `plan_limited` in `org-settings.json`, and `check.sh` reports it as INFO rather than drift. It matters little while the owner is the only member, since the Claude Apps are not members. Revisit it before adding a member.
 
 ## Admin tokens for settings changes
 
