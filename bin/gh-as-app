@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Run gh as the leat-claude App, with a freshly minted installation token.
+set -euo pipefail
+GH_TOKEN="$("$(dirname "$0")/gh-app-token")" exec gh "$@"

@@ -1,0 +1,4 @@
+{
+  "default-branch": ["platform-workflows", "leat-site", "demo-app"],
+  "release-tags": ["platform-workflows", "demo-app"]
+}
