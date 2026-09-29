@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Print a GitHub App installation token for the leat-consulting organisation.
+#
+# The token expires after one hour and carries only the App's permissions.
+# Nothing is written to disk; mint a new token when one expires.
+#
+# Environment:
+#   LEAT_APP_ID    GitHub App ID (default: the leat-claude App)
+#   LEAT_APP_KEY   path to the App's private key (default: ~/.config/leat/leat-claude.pem)
+#   LEAT_APP_ORG   organisation the App is installed on (default: leat-consulting)
+set -euo pipefail
+
+app_id="${LEAT_APP_ID:-5126595}"
+key="${LEAT_APP_KEY:-$HOME/.config/leat/leat-claude.pem}"
+org="${LEAT_APP_ORG:-leat-consulting}"
+
+[ -r "$key" ] || { echo "gh-app-token: cannot read private key at $key" >&2; exit 1; }
+perms=$(stat -c '%a' "$key")
+[ "$perms" = "600" ] || [ "$perms" = "400" ] || { echo "gh-app-token: $key must be mode 600 or 400, found $perms" >&2; exit 1; }
+
+b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+now=$(date +%s)
+header=$(printf '{"alg":"RS256","typ":"JWT"}' | b64url)
+payload=$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' "$((now - 60))" "$((now + 540))" "$app_id" | b64url)
+signature=$(printf '%s.%s' "$header" "$payload" | openssl dgst -sha256 -sign "$key" -binary | b64url)
+jwt="$header.$payload.$signature"
+
+api() {
+  curl -fsS -X "$1" "https://api.github.com$2" \
+    -H "Authorization: Bearer $jwt" \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2022-11-28"
+}
+
+installation_id=$(api GET "/orgs/$org/installation" | jq -r '.id')
+api POST "/app/installations/$installation_id/access_tokens" | jq -r '.token'

@@ -1,0 +1,6 @@
+# Private keys and local credentials must never be committed.
+*.pem
+*.key
+.env
+.env.*
+__pycache__/
