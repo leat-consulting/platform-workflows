@@ -155,6 +155,29 @@ def check_repos(org):
     return diffs
 
 
+def repo_settings_diffs(org):
+    diffs = []
+    for repo, settings in load("repo-settings.json").items():
+        if "immutable_releases" in settings:
+            live = api(f"repos/{org}/{repo}/immutable-releases") or {}
+            if live.get("enabled") != settings["immutable_releases"]:
+                diffs.append(f"{repo}: immutable releases expected {settings['immutable_releases']}, found {live.get('enabled')}")
+    return diffs
+
+
+def apply_repo_settings(org):
+    changed = 0
+    for repo, settings in load("repo-settings.json").items():
+        if "immutable_releases" in settings:
+            live = api(f"repos/{org}/{repo}/immutable-releases") or {}
+            if live.get("enabled") != settings["immutable_releases"]:
+                method = "PUT" if settings["immutable_releases"] else "DELETE"
+                api(f"repos/{org}/{repo}/immutable-releases", method)
+                print(f"{repo}: updated immutable releases")
+                changed += 1
+    return changed
+
+
 def plan_limited_report(org):
     lines = []
     for endpoint, fields in load("org-settings.json").get("plan_limited", {}).items():
@@ -192,7 +215,7 @@ def apply_actions_policy(org):
 
 def apply(org):
     assignments = load("rulesets/assignments.json")
-    changed = apply_actions_policy(org)
+    changed = apply_actions_policy(org) + apply_repo_settings(org)
     for name, repos in assignments.items():
         for repo in repos:
             want = desired_ruleset(name, repo)
@@ -217,7 +240,7 @@ def main():
         apply(org)
         return 0
     if command == "check":
-        diffs = check_org(org) + check_repos(org)
+        diffs = check_org(org) + check_repos(org) + repo_settings_diffs(org)
         for line in diffs:
             print(f"DRIFT {line}")
         for line in plan_limited_report(org) + bypass_report(org):
