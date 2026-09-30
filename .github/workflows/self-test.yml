@@ -1,0 +1,134 @@
+name: self-test
+
+# Exercise every reusable workflow in this repository against the fixtures,
+# including negative cases that must be detected.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: self-test-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  policy:
+    name: workflow policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check workflow rules
+        run: python3 scripts/lint-workflows.py
+
+  node-ci:
+    name: node-ci
+    uses: ./.github/workflows/node-ci.yml
+    permissions:
+      contents: read
+    with:
+      working-directory: fixtures/node-app
+      artifact-path: dist
+      artifact-name: node-app-dist
+
+  security-scan:
+    name: security-scan
+    uses: ./.github/workflows/security-scan.yml
+    permissions:
+      contents: read
+
+  # The fixtures/bad branch holds a planted secret, a vulnerable dependency
+  # and an unsafe workflow. It is scanned in report mode, and the assert job
+  # fails unless every scanner found something.
+  security-scan-negative:
+    name: security-scan (negative)
+    uses: ./.github/workflows/security-scan.yml
+    permissions:
+      contents: read
+    with:
+      mode: report
+      ref: fixtures/bad
+      base-ref: main
+      head-ref: fixtures/bad
+
+  security-scan-negative-assert:
+    name: security-scan (negative assert)
+    needs: security-scan-negative
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Every scanner must report the planted problems
+        env:
+          GITLEAKS: ${{ needs.security-scan-negative.outputs.gitleaks-findings }}
+          DEPENDENCY: ${{ needs.security-scan-negative.outputs.dependency-findings }}
+          TRIVY: ${{ needs.security-scan-negative.outputs.trivy-findings }}
+          ACTIONLINT: ${{ needs.security-scan-negative.outputs.actionlint-findings }}
+          ZIZMOR: ${{ needs.security-scan-negative.outputs.zizmor-findings }}
+        run: |
+          failed=0
+          for scanner in GITLEAKS DEPENDENCY TRIVY ACTIONLINT ZIZMOR; do
+            count="${!scanner}"
+            if [ "${count:-0}" -gt 0 ]; then
+              echo "$scanner detected $count finding(s)"
+            else
+              echo "::error::$scanner detected nothing on fixtures/bad"
+              failed=1
+            fi
+          done
+          exit "$failed"
+
+  container-check:
+    name: container-check
+    uses: ./.github/workflows/container-check.yml
+    permissions:
+      contents: read
+    with:
+      context: fixtures/container-app
+
+  container-publish:
+    name: container-build
+    if: github.event_name == 'push'
+    uses: ./.github/workflows/container-build.yml
+    permissions:
+      contents: read
+      packages: write # push images to GHCR
+      id-token: write # OIDC token for Sigstore signing
+      attestations: write # store the provenance attestation
+    with:
+      image: ghcr.io/leat-consulting/pw-fixture
+      context: fixtures/container-app
+
+  static-site:
+    name: node-ci (static site)
+    uses: ./.github/workflows/node-ci.yml
+    permissions:
+      contents: read
+    with:
+      working-directory: fixtures/static-site
+      artifact-path: dist
+      artifact-name: static-site
+
+  pages:
+    name: pages-deploy (package only)
+    needs: static-site
+    uses: ./.github/workflows/pages-deploy.yml
+    permissions:
+      contents: read
+      id-token: write # OIDC token for Sigstore signing
+      attestations: write # store the provenance attestation
+      # GitHub validates the permissions of every called job, including the
+      # deploy job that deploy: false skips. This repository has no Pages site.
+      pages: write # required by validation only; nothing is deployed
+    with:
+      artifact-name: static-site
+      deploy: false

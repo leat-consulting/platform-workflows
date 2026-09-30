@@ -15,8 +15,8 @@ The organisation is on GitHub Free. Organisation-level rulesets need GitHub Team
 | `rulesets/default-branch.json` | Protection for `main` on every repository |
 | `rulesets/release-tags.json` | Protection for `v*` tags where releases are published |
 | `rulesets/assignments.json` | Which rulesets apply to which repositories |
-| `rulesets/required-checks/<repo>.json` | Status checks required on a repository's `main`, merged into `default-branch` at apply time |
-| `governance.py` | Implements `apply` and `check` |
+| `rulesets/required-checks/<repo>.json` | Status checks required on a repository's `main`, merged into `default-branch` at apply time. Each check is tied to the GitHub Actions app (`integration_id` 15368), so no other app can satisfy it by posting a check with the same name. |
+| `governance.py` | Implements `apply` (Actions policy and rulesets) and `check` (everything) |
 | `apply.sh`, `check.sh` | Entry points |
 
 ## What the rules enforce
@@ -44,7 +44,7 @@ Both scripts need `gh` and a token in `GH_TOKEN` with organisation administratio
 
 ```sh
 ./check.sh   # prints each difference as DRIFT and exits 1 if there are any
-./apply.sh   # creates or updates rulesets to match; a second run makes no changes
+./apply.sh   # updates the Actions policy and rulesets to match; a second run makes no changes
 ```
 
 Settings the API does not change: the REST API accepts but ignores `members_can_delete_repositories` and `members_can_change_repo_visibility`. They are listed under `ui_only` in `org-settings.json`. `check.sh` still reports them, but they must be set by hand under Settings, Member privileges.

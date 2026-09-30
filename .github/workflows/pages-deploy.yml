@@ -1,0 +1,97 @@
+name: pages-deploy
+
+# Package a static site build, attest its provenance, verify the attestation,
+# then deploy exactly that package to GitHub Pages through the caller's
+# github-pages environment. Deployment happens only from the default branch.
+#
+# Caller permissions required: contents: read, id-token: write,
+# attestations: write, pages: write.
+# The caller repository must have Pages enabled with source "GitHub Actions",
+# and its github-pages environment should allow deployments from the default
+# branch only.
+
+on:
+  workflow_call:
+    inputs:
+      artifact-name:
+        description: Name of an artifact from the same run that contains the built site (for example from node-ci).
+        type: string
+        required: true
+      deploy:
+        description: Deploy after verification. Set false to package, attest and verify only.
+        type: boolean
+        default: true
+    outputs:
+      page-url:
+        description: URL of the deployed site, or empty if nothing was deployed.
+        value: ${{ jobs.deploy.outputs.page-url }}
+
+permissions: {}
+
+jobs:
+  package:
+    name: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write # OIDC token for Sigstore signing
+      attestations: write # store the provenance attestation
+    steps:
+      - name: Download site
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ runner.temp }}/site
+
+      - name: Package site
+        run: |
+          set -euo pipefail
+          tar --dereference --hard-dereference --directory "$RUNNER_TEMP/site" \
+            --exclude=.git --exclude=.github -cf "$RUNNER_TEMP/artifact.tar" .
+          sha256sum "$RUNNER_TEMP/artifact.tar"
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ runner.temp }}/artifact.tar
+
+      - name: Verify provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh attestation verify "$RUNNER_TEMP/artifact.tar" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow leat-consulting/platform-workflows/.github/workflows/pages-deploy.yml \
+            --deny-self-hosted-runners
+          echo "Provenance verified for artifact.tar ($(sha256sum "$RUNNER_TEMP/artifact.tar" | cut -d' ' -f1))." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: github-pages
+          path: ${{ runner.temp }}/artifact.tar
+          if-no-files-found: error
+          retention-days: 1
+
+  deploy:
+    name: deploy
+    needs: package
+    if: ${{ inputs.deploy && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write # deploy to GitHub Pages
+      id-token: write # OIDC token for the Pages deployment
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      page-url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+        with:
+          artifact_name: github-pages

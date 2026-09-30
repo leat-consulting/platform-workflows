@@ -1,0 +1,297 @@
+name: security-scan
+
+# Secret scanning over the commits in the change, dependency review,
+# filesystem vulnerability and misconfiguration scanning, and workflow
+# linting. In enforce mode the job fails if any scanner reports a finding;
+# in report mode it only reports counts, which is useful when adopting the
+# scan on an existing repository.
+# Caller permissions required: contents: read.
+#
+# Scanners run as release binaries pinned by version and SHA-256 rather than
+# third-party actions, so there is no action repository to trust.
+
+on:
+  workflow_call:
+    inputs:
+      mode:
+        description: "enforce: fail on any finding. report: record findings without failing."
+        type: string
+        default: enforce
+      ref:
+        description: Git ref to check out and scan. Defaults to the ref that triggered the caller.
+        type: string
+        default: ""
+      base-ref:
+        description: Base ref for secret scanning and dependency review. Defaults to the pull request base or the previous push.
+        type: string
+        default: ""
+      head-ref:
+        description: Head ref for secret scanning and dependency review. Used only with base-ref.
+        type: string
+        default: ""
+      working-directory:
+        description: Directory for the filesystem vulnerability and misconfiguration scan.
+        type: string
+        default: "."
+      trivy-severity:
+        description: Comma-separated severities that count as findings in the filesystem scan.
+        type: string
+        default: HIGH,CRITICAL
+      dependency-review-fail-on:
+        description: Lowest advisory severity that counts as a finding in dependency review (low, moderate, high, critical).
+        type: string
+        default: high
+      zizmor-min-severity:
+        description: Lowest zizmor severity that counts as a finding (informational, low, medium, high).
+        type: string
+        default: low
+    outputs:
+      gitleaks-findings:
+        description: Number of secrets found in the commits scanned.
+        value: ${{ jobs.scan.outputs.gitleaks }}
+      dependency-findings:
+        description: Number of vulnerable dependency changes, or 0 when dependency review did not run.
+        value: ${{ jobs.scan.outputs.dependency }}
+      trivy-findings:
+        description: Number of vulnerabilities and failed misconfiguration checks at the configured severities.
+        value: ${{ jobs.scan.outputs.trivy }}
+      actionlint-findings:
+        description: Number of actionlint errors in workflow files.
+        value: ${{ jobs.scan.outputs.actionlint }}
+      zizmor-findings:
+        description: Number of zizmor findings at or above the configured severity.
+        value: ${{ jobs.scan.outputs.zizmor }}
+
+permissions: {}
+
+jobs:
+  scan:
+    name: scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      gitleaks: ${{ steps.gitleaks.outputs.count }}
+      dependency: ${{ steps.dependency-count.outputs.count }}
+      trivy: ${{ steps.trivy.outputs.count }}
+      actionlint: ${{ steps.actionlint.outputs.count }}
+      zizmor: ${{ steps.zizmor.outputs.count }}
+    env:
+      GITLEAKS_VERSION: 8.30.1
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+      ACTIONLINT_VERSION: 1.7.12
+      ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+      TRIVY_VERSION: 0.74.0
+      TRIVY_SHA256: 2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a
+      ZIZMOR_VERSION: 1.30.1
+      ZIZMOR_SHA256: e65324f4430c2717591937edcec90ccbefaf14c174f8ec9415e03ca875b46e1a
+    steps:
+      - name: Validate inputs
+        env:
+          MODE: ${{ inputs.mode }}
+          BASE_REF: ${{ inputs.base-ref }}
+          HEAD_REF: ${{ inputs.head-ref }}
+        run: |
+          case "$MODE" in
+            enforce|report) ;;
+            *) echo "::error::mode must be enforce or report"; exit 1 ;;
+          esac
+          if [ -n "$HEAD_REF" ] && [ -z "$BASE_REF" ]; then
+            echo "::error::head-ref needs base-ref"; exit 1
+          fi
+
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install scanners
+        run: |
+          set -euo pipefail
+          bin="$RUNNER_TEMP/scan-tools"
+          mkdir -p "$bin"
+          cd "$RUNNER_TEMP"
+          fetch() {
+            local url="$1" sum="$2" member="$3" file
+            file="$(basename "$url")"
+            curl -fsSL --retry 3 -o "$file" "$url"
+            echo "$sum  $file" | sha256sum --check --strict --quiet
+            tar -xzf "$file" -C "$bin" "$member"
+          }
+          fetch "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" "$GITLEAKS_SHA256" gitleaks
+          fetch "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" "$ACTIONLINT_SHA256" actionlint
+          fetch "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" "$TRIVY_SHA256" trivy
+          fetch "https://github.com/zizmorcore/zizmor/releases/download/v${ZIZMOR_VERSION}/zizmor-x86_64-unknown-linux-gnu.tar.gz" "$ZIZMOR_SHA256" zizmor
+          echo "$bin" >> "$GITHUB_PATH"
+
+      - name: Work out the commits to scan
+        id: range
+        env:
+          BASE_REF: ${{ inputs.base-ref }}
+          HEAD_REF: ${{ inputs.head-ref }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.event.after }}
+        run: |
+          set -euo pipefail
+          resolve() { git rev-parse --verify --quiet "origin/$1^{commit}" || git rev-parse --verify "$1^{commit}"; }
+          zero=0000000000000000000000000000000000000000
+          review=false
+          if [ -n "$BASE_REF" ]; then
+            base="$(resolve "$BASE_REF")"
+            head="$(resolve "${HEAD_REF:-HEAD}")"
+            log_opts="$base..$head"
+            review=true
+          elif [ "$EVENT_NAME" = "pull_request" ]; then
+            log_opts="$PR_BASE_SHA..$PR_HEAD_SHA"
+            review=true
+          elif [ "$EVENT_NAME" = "push" ] && [ -n "$PUSH_BEFORE" ] && [ "$PUSH_BEFORE" != "$zero" ]; then
+            log_opts="$PUSH_BEFORE..$PUSH_AFTER"
+          else
+            log_opts="HEAD"
+          fi
+          echo "Scanning commits: $log_opts"
+          {
+            echo "log-opts=$log_opts"
+            echo "review=$review"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Secret scan (gitleaks)
+        id: gitleaks
+        env:
+          LOG_OPTS: ${{ steps.range.outputs.log-opts }}
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/gitleaks.json"
+          gitleaks git --log-opts="$LOG_OPTS" --redact --no-banner --exit-code 0 \
+            --report-format json --report-path "$report" .
+          count="$(jq 'length' "$report")"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Secret scan: $count finding(s)"
+            if [ "$count" -gt 0 ]; then
+              echo "| Rule | File | Line | Commit |"
+              echo "|---|---|---|---|"
+              jq -r '.[] | "| \(.RuleID) | \(.File) | \(.StartLine) | \(.Commit[0:7]) |"' "$report"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dependency review
+        id: dependency
+        if: steps.range.outputs.review == 'true'
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          base-ref: ${{ inputs.base-ref }}
+          head-ref: ${{ inputs.head-ref }}
+          fail-on-severity: ${{ inputs.dependency-review-fail-on }}
+          warn-only: true
+          comment-summary-in-pr: never
+
+      - name: Count dependency review findings
+        id: dependency-count
+        env:
+          VULNERABLE: ${{ steps.dependency.outputs.vulnerable-changes }}
+          RAN: ${{ steps.dependency.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          if [ "$RAN" = "true" ] && [ -n "$VULNERABLE" ]; then
+            count="$(jq 'length' <<< "$VULNERABLE")"
+          else
+            count=0
+          fi
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "### Dependency review: $count vulnerable change(s)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Vulnerability and misconfiguration scan (trivy)
+        id: trivy
+        env:
+          SEVERITY: ${{ inputs.trivy-severity }}
+          SCAN_DIR: ${{ inputs.working-directory }}
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/trivy.json"
+          trivy fs --quiet --scanners vuln,misconfig --severity "$SEVERITY" \
+            --format json --output "$report" --exit-code 0 "$SCAN_DIR"
+          count="$(jq '[.Results[]? | ((.Vulnerabilities // []) | length) + ((.Misconfigurations // []) | map(select(.Status == "FAIL")) | length)] | add // 0' "$report")"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Vulnerability and misconfiguration scan: $count finding(s)"
+            if [ "$count" -gt 0 ]; then
+              echo '```'
+              trivy convert --format table "$report"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Workflow lint (actionlint)
+        id: actionlint
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/actionlint.json"
+          if compgen -G ".github/workflows/*.y*ml" > /dev/null; then
+            actionlint -format '{{json .}}' > "$report" || true
+          else
+            echo '[]' > "$report"
+          fi
+          count="$(jq 'length' "$report")"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Workflow lint: $count finding(s)"
+            jq -r '.[] | "- `\(.filepath):\(.line)` \(.message)"' "$report"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Workflow security audit (zizmor)
+        id: zizmor
+        env:
+          MIN_SEVERITY: ${{ inputs.zizmor-min-severity }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/zizmor.json"
+          errors="$RUNNER_TEMP/zizmor.err"
+          if ! zizmor --format json --no-exit-codes --min-severity "$MIN_SEVERITY" . > "$report" 2> "$errors"; then
+            # A repository with no workflows or actions has nothing to audit.
+            if grep -q "no inputs collected" "$errors"; then
+              echo '[]' > "$report"
+            else
+              cat "$errors" >&2
+              exit 1
+            fi
+          fi
+          count="$(jq 'length' "$report")"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Workflow security audit: $count finding(s)"
+            jq -r '.[] | "- `\(.ident)` (\(.determinations.severity)): \(.desc) in `\(.locations[0].symbolic.key.Local.verbatim_path // "unknown"):\((.locations[0].concrete.location.start_point.row // 0) + 1)`"' "$report"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Enforce
+        env:
+          MODE: ${{ inputs.mode }}
+          GITLEAKS: ${{ steps.gitleaks.outputs.count }}
+          DEPENDENCY: ${{ steps.dependency-count.outputs.count }}
+          TRIVY: ${{ steps.trivy.outputs.count }}
+          ACTIONLINT: ${{ steps.actionlint.outputs.count }}
+          ZIZMOR: ${{ steps.zizmor.outputs.count }}
+        run: |
+          set -euo pipefail
+          total=$((GITLEAKS + DEPENDENCY + TRIVY + ACTIONLINT + ZIZMOR))
+          {
+            echo "### Summary ($MODE mode)"
+            echo "| Scanner | Findings |"
+            echo "|---|---|"
+            echo "| gitleaks | $GITLEAKS |"
+            echo "| dependency review | $DEPENDENCY |"
+            echo "| trivy | $TRIVY |"
+            echo "| actionlint | $ACTIONLINT |"
+            echo "| zizmor | $ZIZMOR |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$MODE" = "enforce" ] && [ "$total" -gt 0 ]; then
+            echo "::error::$total security finding(s). See the job summary for details."
+            exit 1
+          fi

@@ -1,0 +1,59 @@
+name: container-check
+
+# Build a container image for linux/amd64 and linux/arm64 on native runners
+# and push nothing. Use this on pull requests; use container-build on the
+# default branch. The two are separate because GitHub validates the
+# permissions of every job in a called workflow, including skipped ones, so
+# a single workflow with a push switch would force pull requests to grant
+# package and signing permissions they never use.
+#
+# Caller permissions required: contents: read.
+
+on:
+  workflow_call:
+    inputs:
+      context:
+        description: Build context directory.
+        type: string
+        default: "."
+      dockerfile:
+        description: Path to the Dockerfile. Defaults to Dockerfile in the context.
+        type: string
+        default: ""
+
+permissions: {}
+
+jobs:
+  check:
+    name: check (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build without pushing
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          platforms: ${{ matrix.platform }}
+          push: false
+          provenance: false
+          sbom: false
+

@@ -1,0 +1,9 @@
+{
+  "name": "pw-fixture-static-site",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Minimal static site used by the platform-workflows self-test.",
+  "scripts": {
+    "build": "mkdir -p dist && cp src/index.html dist/"
+  }
+}

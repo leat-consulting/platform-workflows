@@ -1,0 +1,13 @@
+# zizmor configuration: https://docs.zizmor.sh/configuration/
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        # Every action and reusable workflow, including GitHub's own, must be
+        # pinned to a full commit SHA.
+        "*": hash-pin
+  self-repository:
+    # zizmor prefers GitHub's newer `$/` syntax for local reusable workflows,
+    # but actionlint 1.7.12 does not recognise it yet. Revisit when actionlint
+    # supports it.
+    disable: true
