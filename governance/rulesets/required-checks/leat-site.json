@@ -1,0 +1,17 @@
+{
+  "strict": true,
+  "required_status_checks": [
+    {
+      "context": "ci / build",
+      "integration_id": 15368
+    },
+    {
+      "context": "scan / scan",
+      "integration_id": 15368
+    },
+    {
+      "context": "lighthouse",
+      "integration_id": 15368
+    }
+  ]
+}

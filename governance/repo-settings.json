@@ -1,0 +1,5 @@
+{
+  "platform-workflows": {
+    "immutable_releases": true
+  }
+}

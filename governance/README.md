@@ -14,6 +14,7 @@ The organisation is on GitHub Free. Organisation-level rulesets need GitHub Team
 | `actions-policy.json` | Which actions may run, and that every reference is pinned to a full commit SHA |
 | `rulesets/default-branch.json` | Protection for `main` on every repository |
 | `rulesets/release-tags.json` | Protection for `v*` tags where releases are published |
+| `repo-settings.json` | Per-repository settings outside rulesets, such as immutable releases |
 | `rulesets/assignments.json` | Which rulesets apply to which repositories |
 | `rulesets/required-checks/<repo>.json` | Status checks required on a repository's `main`, merged into `default-branch` at apply time. Each check is tied to the GitHub Actions app (`integration_id` 15368), so no other app can satisfy it by posting a check with the same name. |
 | `governance.py` | Implements `apply` (Actions policy and rulesets) and `check` (everything) |
@@ -29,7 +30,7 @@ On `main` in every repository:
 - Review threads must be resolved, history stays linear, and merges are squash only.
 - The only bypass is the organisation owner role, in pull-request-only mode. It exists because a pull request written by the only human member could otherwise never be merged. It cannot be used to push directly, and each use is recorded on the pull request and reported by `check.sh`.
 
-On `v*` tags in `platform-workflows` and `demo-app`: only the owner may create, move or delete them.
+On `v*` tags in `platform-workflows` and `demo-app`: only the owner may create, move or delete them. `platform-workflows` also has immutable releases, so a published release and its tag cannot be changed by anyone.
 
 Organisation-wide:
 
