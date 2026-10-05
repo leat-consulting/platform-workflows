@@ -1,5 +1,5 @@
 # Minimal image used by the container-build self-test.
-FROM nginxinc/nginx-unprivileged:1.29-alpine@sha256:0c79d56aee561a1d81c63f00eee5fb5fe29279560cdc55e91425133104c7fbe6
+FROM nginxinc/nginx-unprivileged:1.30-alpine@sha256:ed04ec1ff34502c339ee5c3ae3f855442398edc1d05591e2b98981dcbbd20b1e
 COPY index.html /usr/share/nginx/html/index.html
 USER 101
 EXPOSE 8080
